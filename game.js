@@ -1,42 +1,47 @@
 
 "use strict";
 
+/* 기본 설정 */
 const SIZE = 15;
-const CELL = 38;
 const PAD = 30;
-const BOARD_SIZE = PAD * 2 + CELL * (SIZE - 1);
+const CELL = 38;
+const CENTER = 7;
 
 const $ = (id) => document.getElementById(id);
 const canvas = $("board");
 const ctx = canvas.getContext("2d");
 
+const DIRECTIONS = [
+  [1, 0], [0, 1], [1, 1], [1, -1]
+];
+
 let board = [];
 let moves = [];
-let currentPlayer = 1; // 1: 흑돌, 2: 백돌
+let currentPlayer = 1;
 let gameOver = false;
 let thinking = false;
 let aiTimer = null;
 let lastMove = null;
 
-let stats = loadData("kittyAiStats", {
-  wins: 0, losses: 0, streak: 0
-});
-
-let localStats = loadData("kittyLocalStats", {
-  player1: 0, player2: 0
-});
-
-function loadData(key, fallback) {
+/* 기록 불러오기 */
+function readStorage(key, fallback) {
   try {
-    const saved = JSON.parse(localStorage.getItem(key));
-    return saved && typeof saved === "object" ? saved : fallback;
+    return JSON.parse(localStorage.getItem(key)) || fallback;
   } catch {
     return fallback;
   }
 }
 
-function saveData() {
-  localStorage.setItem("kittyAiStats", JSON.stringify(stats));
+let aiStats = readStorage("kittyAiStats", {
+  wins: 0, losses: 0, streak: 0
+});
+
+let localStats = readStorage("kittyLocalStats", {
+  player1: 0, player2: 0
+});
+
+function saveStats() {
+  localStorage.setItem("kittyAiStats", JSON.stringify(aiStats));
   localStorage.setItem("kittyLocalStats", JSON.stringify(localStats));
 }
 
@@ -44,7 +49,7 @@ function isLocalMode() {
   return $("gameMode").value === "local";
 }
 
-function playerName(player) {
+function getPlayerName(player) {
   if (player === 1) {
     return $("player1Name").value.trim() || "플레이어 1";
   }
@@ -56,7 +61,13 @@ function playerName(player) {
   return "AI";
 }
 
-function initBoard() {
+/* 게임 초기화 */
+function startGame() {
+  if (aiTimer) {
+    clearTimeout(aiTimer);
+    aiTimer = null;
+  }
+
   board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
   moves = [];
   currentPlayer = 1;
@@ -64,18 +75,21 @@ function initBoard() {
   thinking = false;
   lastMove = null;
 
-  if (aiTimer) {
-    clearTimeout(aiTimer);
-    aiTimer = null;
-  }
-
   $("endModal").classList.add("hidden");
+  $("endModal").style.display = "none";
+
+  $("difficultyBox").style.display = isLocalMode() ? "none" : "flex";
+  $("player2Box").querySelector("label").textContent =
+    isLocalMode() ? "플레이어 2 이름 (백돌)" : "상대방 (AI)";
+
+  $("player2Name").disabled = !isLocalMode();
+
+  updateStats();
   updateTurn();
   drawBoard();
-  updateStats();
 
   if (isLocalMode()) {
-    showMessage(`${playerName(1)}님부터 시작하세요! 🎀`);
+    showMessage(`${getPlayerName(1)}님부터 시작하세요! 🎀`);
   } else {
     showMessage("흑돌부터 시작해 보세요! 💗");
   }
@@ -86,32 +100,36 @@ function showMessage(message) {
 }
 
 function updateTurn() {
-  const local = isLocalMode();
-  const name = playerName(currentPlayer);
-  const stone = currentPlayer === 1 ? "흑돌" : "백돌";
+  const name = getPlayerName(currentPlayer);
 
-  $("turnLabel").textContent = local
-    ? `${name} 차례`
-    : currentPlayer === 1 ? "내 차례" : "AI 생각 중";
+  if (isLocalMode()) {
+    $("turnLabel").textContent = `${name} 차례`;
+  } else {
+    $("turnLabel").textContent =
+      currentPlayer === 1 ? "내 차례" : "AI 생각 중";
+  }
 
   $("turnBadge").textContent =
     currentPlayer === 1 ? "🐱 흑돌" : "🤍 백돌";
 
-  $("undoBtn").disabled = moves.length === 0 || gameOver || thinking;
-  $("undoBtn").style.opacity = $("undoBtn").disabled ? ".45" : "1";
+  $("undoBtn").disabled =
+    moves.length === 0 || gameOver || thinking;
 }
 
+/* 오목판 그리기 */
 function drawBoard() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // 나무색 배경
   ctx.fillStyle = "#f4d9b1";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // 은은한 배경 무늬
-  for (let i = 0; i < 15; i++) {
-    ctx.fillStyle = "rgba(255,255,255,0.09)";
-    ctx.fillRect(0, i * 42, canvas.width, 1);
+  // 은은한 나무 무늬
+  for (let i = 0; i < 20; i++) {
+    ctx.strokeStyle = "rgba(255,255,255,0.12)";
+    ctx.beginPath();
+    ctx.moveTo(0, i * 31);
+    ctx.lineTo(600, i * 31);
+    ctx.stroke();
   }
 
   // 바둑판 선
@@ -119,32 +137,31 @@ function drawBoard() {
   ctx.lineWidth = 1.3;
 
   for (let i = 0; i < SIZE; i++) {
-    const pos = PAD + i * CELL;
+    const p = PAD + i * CELL;
 
     ctx.beginPath();
-    ctx.moveTo(PAD, pos);
-    ctx.lineTo(PAD + (SIZE - 1) * CELL, pos);
+    ctx.moveTo(PAD, p);
+    ctx.lineTo(PAD + (SIZE - 1) * CELL, p);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(pos, PAD);
-    ctx.lineTo(pos, PAD + (SIZE - 1) * CELL);
+    ctx.moveTo(p, PAD);
+    ctx.lineTo(p, PAD + (SIZE - 1) * CELL);
     ctx.stroke();
   }
 
   // 화점
-  const stars = [3, 7, 11];
   ctx.fillStyle = "#8d6243";
 
-  for (const r of stars) {
-    for (const c of stars) {
+  [3, 7, 11].forEach(r => {
+    [3, 7, 11].forEach(c => {
       ctx.beginPath();
-      ctx.arc(PAD + c * CELL, PAD + r * CELL, 3.2, 0, Math.PI * 2);
+      ctx.arc(PAD + c * CELL, PAD + r * CELL, 3, 0, Math.PI * 2);
       ctx.fill();
-    }
-  }
+    });
+  });
 
-  // 돌 그리기
+  // 돌
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
       if (board[r][c] !== 0) {
@@ -155,13 +172,14 @@ function drawBoard() {
 
   // 마지막 돌 표시
   if (lastMove) {
-    const x = PAD + lastMove.c * CELL;
-    const y = PAD + lastMove.r * CELL;
-
+    ctx.beginPath();
+    ctx.arc(
+      PAD + lastMove.c * CELL,
+      PAD + lastMove.r * CELL,
+      17, 0, Math.PI * 2
+    );
     ctx.strokeStyle = "#e33f83";
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(x, y, 15, 0, Math.PI * 2);
     ctx.stroke();
   }
 }
@@ -175,13 +193,13 @@ function drawStone(r, c, player) {
   // 그림자
   ctx.beginPath();
   ctx.ellipse(x + 1, y + 4, 14, 12, 0, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(80,45,50,0.17)";
+  ctx.fillStyle = "rgba(80,45,50,0.18)";
   ctx.fill();
 
   // 고양이 귀
   ctx.fillStyle = player === 1 ? "#59454f" : "#fffdfd";
   ctx.strokeStyle = player === 1 ? "#49333d" : "#e5a9c0";
-  ctx.lineWidth = 1.4;
+  ctx.lineWidth = 1.3;
 
   ctx.beginPath();
   ctx.moveTo(x - 10, y - 7);
@@ -223,8 +241,8 @@ function drawStone(r, c, player) {
   ctx.fillStyle = player === 1 ? "#ffffff" : "#57414a";
 
   ctx.beginPath();
-  ctx.ellipse(x - 5, y - 2, 1.6, 2.6, 0, 0, Math.PI * 2);
-  ctx.ellipse(x + 5, y - 2, 1.6, 2.6, 0, 0, Math.PI * 2);
+  ctx.ellipse(x - 5, y - 2, 1.5, 2.5, 0, 0, Math.PI * 2);
+  ctx.ellipse(x + 5, y - 2, 1.5, 2.5, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // 코
@@ -249,9 +267,10 @@ function drawStone(r, c, player) {
     ctx.stroke();
   }
 
-  // 리본
+  // 백돌의 핑크 리본
   if (player === 2) {
     ctx.fillStyle = "#ed6b9d";
+
     ctx.beginPath();
     ctx.moveTo(x + 7, y - 13);
     ctx.lineTo(x + 1, y - 19);
@@ -275,18 +294,18 @@ function drawStone(r, c, player) {
   ctx.restore();
 }
 
-function canvasPosition(event) {
+/* 클릭 위치 계산 */
+function getBoardPosition(event) {
   const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-
-  const x = (event.clientX - rect.left) * scaleX;
-  const y = (event.clientY - rect.top) * scaleY;
+  const x = (event.clientX - rect.left) * canvas.width / rect.width;
+  const y = (event.clientY - rect.top) * canvas.height / rect.height;
 
   const c = Math.round((x - PAD) / CELL);
   const r = Math.round((y - PAD) / CELL);
 
-  if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return null;
+  if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) {
+    return null;
+  }
 
   const targetX = PAD + c * CELL;
   const targetY = PAD + r * CELL;
@@ -298,71 +317,73 @@ function canvasPosition(event) {
   return { r, c };
 }
 
+/* 사람의 클릭 */
 canvas.addEventListener("click", (event) => {
   if (gameOver || thinking) return;
 
-  if (!isLocalMode() && currentPlayer === 2) return;
+  // AI 모드에서는 흑돌 차례에만 클릭 허용
+  if (!isLocalMode() && currentPlayer !== 1) return;
 
-  const point = canvasPosition(event);
+  const point = getBoardPosition(event);
   if (!point) return;
 
-  placeStone(point.r, point.c);
+  playMove(point.r, point.c);
 });
 
-function placeStone(r, c) {
-  if (gameOver || board[r][c] !== 0) return false;
+/* 착수 처리 */
+function playMove(r, c) {
+  if (gameOver || thinking || board[r][c] !== 0) return false;
 
-  // AI 대결 및 2인용 모두 흑돌의 금수 검사
-  if (currentPlayer === 1 && isForbidden(r, c)) {
-    showMessage("앗! 흑돌 금수 자리예요. 다른 곳에 놓아주세요! 🎀");
+  const localMode = isLocalMode();
+  const player = currentPlayer;
+
+  // 금수는 AI 모드의 흑돌에만 적용
+  if (!localMode && player === 1 && isForbidden(r, c)) {
+    showMessage("금수 자리예요! 다른 곳에 놓아주세요 🎀");
     return false;
   }
 
-  board[r][c] = currentPlayer;
-  moves.push({ r, c, player: currentPlayer });
+  board[r][c] = player;
+  moves.push({ r, c, player });
   lastMove = { r, c };
 
   drawBoard();
 
-  if (checkWin(r, c, currentPlayer)) {
-    finish(currentPlayer);
+  if (checkWin(r, c, player)) {
+    finish(player);
     return true;
   }
 
-  if (moves.length === SIZE * SIZE) {
+  if (moves.length >= SIZE * SIZE) {
     finish(0);
     return true;
   }
 
-  currentPlayer = currentPlayer === 1 ? 2 : 1;
-  updateTurn();
-
-  if (isLocalMode()) {
-    showMessage(`${playerName(currentPlayer)}님 차례입니다!`);
-  } else if (currentPlayer === 2) {
-    thinking = true;
-    showMessage("AI가 다음 수를 생각하고 있어요... 🐾");
+  // 커스텀 매치: 사람끼리 교대로 진행
+  if (localMode) {
+    currentPlayer = player === 1 ? 2 : 1;
     updateTurn();
-
-    aiTimer = setTimeout(() => {
-      thinking = false;
-      computerTurn();
-    }, 450);
-  } else {
-    showMessage("좋아요! 다음 수를 놓아보세요 💗");
+    showMessage(`${getPlayerName(currentPlayer)}님 차례입니다! 🎀`);
+    return true;
   }
+
+  // AI 모드: 흑돌 다음에 AI가 백돌을 둠
+  currentPlayer = 2;
+  thinking = true;
+  updateTurn();
+  showMessage("AI가 생각하고 있어요... 🐾");
+
+  aiTimer = setTimeout(() => {
+    if (gameOver || isLocalMode()) return;
+
+    thinking = false;
+    computerTurn();
+  }, 450);
 
   return true;
 }
 
-// --------------------------------------------------
-// 승리 판정
-// --------------------------------------------------
-
-const directions = [
-  [1, 0], [0, 1], [1, 1], [1, -1]
-];
-
+/* 승리 판정 */
 function countLine(r, c, dr, dc, player) {
   let count = 1;
 
@@ -385,7 +406,7 @@ function countLine(r, c, dr, dc, player) {
 }
 
 function checkWin(r, c, player) {
-  for (const [dr, dc] of directions) {
+  for (const [dr, dc] of DIRECTIONS) {
     const count = countLine(r, c, dr, dc, player);
 
     if (player === 1 && count === 5) return true;
@@ -395,85 +416,67 @@ function checkWin(r, c, player) {
   return false;
 }
 
-// --------------------------------------------------
-// 흑돌 금수 검사
-// 33, 44, 장목을 기본 패턴으로 판별합니다.
-// --------------------------------------------------
-
+/* 간이 흑돌 금수 판정 */
 function isForbidden(r, c) {
-  if (board[r][c] !== 0) return false;
-
   board[r][c] = 1;
 
-  const lineCounts = directions.map(([dr, dc]) =>
+  const counts = DIRECTIONS.map(([dr, dc]) =>
     countLine(r, c, dr, dc, 1)
   );
 
-  // 정확히 다섯 개를 만드는 수는 다른 금수보다 우선
-  if (lineCounts.some(count => count === 5)) {
+  // 정확히 다섯 개를 만드는 수는 허용
+  if (counts.some(n => n === 5)) {
     board[r][c] = 0;
     return false;
   }
 
   // 장목
-  if (lineCounts.some(count => count > 5)) {
+  if (counts.some(n => n > 5)) {
     board[r][c] = 0;
     return true;
   }
 
-  const fourCount = directions.filter(([dr, dc]) =>
+  const fours = DIRECTIONS.filter(([dr, dc]) =>
     hasFour(r, c, dr, dc)
   ).length;
 
-  const threeCount = directions.filter(([dr, dc]) =>
+  const threes = DIRECTIONS.filter(([dr, dc]) =>
     hasOpenThree(r, c, dr, dc)
   ).length;
 
   board[r][c] = 0;
 
-  return fourCount >= 2 || threeCount >= 2;
+  return fours >= 2 || threes >= 2;
 }
 
 function hasFour(r, c, dr, dc) {
-  // 놓은 돌을 포함하는 5칸 구간 중
-  // 흑돌 4개와 빈칸 1개가 있는지 검사
   for (let start = -4; start <= 0; start++) {
     let black = 0;
     let empty = 0;
-    let white = 0;
-    let includesCenter = false;
+    let blocked = false;
 
     for (let k = 0; k < 5; k++) {
       const offset = start + k;
       const rr = r + dr * offset;
       const cc = c + dc * offset;
 
-      if (offset === 0) includesCenter = true;
-
-      if (
-        rr < 0 || rr >= SIZE ||
-        cc < 0 || cc >= SIZE
-      ) {
-        white++;
-        continue;
+      if (rr < 0 || rr >= SIZE || cc < 0 || cc >= SIZE) {
+        blocked = true;
+        break;
       }
 
       if (board[rr][cc] === 1) black++;
       else if (board[rr][cc] === 0) empty++;
-      else white++;
+      else blocked = true;
     }
 
-    if (includesCenter && black === 4 && empty === 1 && white === 0) {
-      return true;
-    }
+    if (!blocked && black === 4 && empty === 1) return true;
   }
 
   return false;
 }
 
 function hasOpenThree(r, c, dr, dc) {
-  // 같은 방향에서 한 칸 더 놓았을 때
-  // 양 끝이 열린 연속 4가 만들어지는지 확인
   for (let offset = -4; offset <= 4; offset++) {
     if (offset === 0) continue;
 
@@ -487,10 +490,10 @@ function hasOpenThree(r, c, dr, dc) {
     ) continue;
 
     board[rr][cc] = 1;
-    const openFour = hasStraightOpenFour(r, c, dr, dc);
+    const found = hasStraightOpenFour(r, c, dr, dc);
     board[rr][cc] = 0;
 
-    if (openFour) return true;
+    if (found) return true;
   }
 
   return false;
@@ -498,7 +501,7 @@ function hasOpenThree(r, c, dr, dc) {
 
 function hasStraightOpenFour(r, c, dr, dc) {
   for (let start = -3; start <= 0; start++) {
-    let allBlack = true;
+    let valid = true;
 
     for (let k = 0; k < 4; k++) {
       const offset = start + k;
@@ -510,38 +513,31 @@ function hasStraightOpenFour(r, c, dr, dc) {
         cc < 0 || cc >= SIZE ||
         board[rr][cc] !== 1
       ) {
-        allBlack = false;
+        valid = false;
         break;
       }
     }
 
-    if (!allBlack) continue;
+    if (!valid) continue;
 
-    const beforeR = r + dr * (start - 1);
-    const beforeC = c + dc * (start - 1);
-    const afterR = r + dr * (start + 4);
-    const afterC = c + dc * (start + 4);
+    const br = r + dr * (start - 1);
+    const bc = c + dc * (start - 1);
+    const ar = r + dr * (start + 4);
+    const ac = c + dc * (start + 4);
 
-    const beforeOpen =
-      beforeR >= 0 && beforeR < SIZE &&
-      beforeC >= 0 && beforeC < SIZE &&
-      board[beforeR][beforeC] === 0;
+    const before = br >= 0 && br < SIZE && bc >= 0 && bc < SIZE &&
+      board[br][bc] === 0;
 
-    const afterOpen =
-      afterR >= 0 && afterR < SIZE &&
-      afterC >= 0 && afterC < SIZE &&
-      board[afterR][afterC] === 0;
+    const after = ar >= 0 && ar < SIZE && ac >= 0 && ac < SIZE &&
+      board[ar][ac] === 0;
 
-    if (beforeOpen && afterOpen) return true;
+    if (before && after) return true;
   }
 
   return false;
 }
 
-// --------------------------------------------------
-// AI
-// --------------------------------------------------
-
+/* AI */
 function computerTurn() {
   if (gameOver || isLocalMode()) return;
 
@@ -552,30 +548,45 @@ function computerTurn() {
     return;
   }
 
-  currentPlayer = 2;
-  placeAiStone(move.r, move.c);
-}
-
-function placeAiStone(r, c) {
-  board[r][c] = 2;
-  moves.push({ r, c, player: 2 });
-  lastMove = { r, c };
+  board[move.r][move.c] = 2;
+  moves.push({ r: move.r, c: move.c, player: 2 });
+  lastMove = { r: move.r, c: move.c };
 
   drawBoard();
 
-  if (checkWin(r, c, 2)) {
+  if (checkWin(move.r, move.c, 2)) {
     finish(2);
     return;
   }
 
-  if (moves.length === SIZE * SIZE) {
+  if (moves.length >= SIZE * SIZE) {
     finish(0);
     return;
   }
 
   currentPlayer = 1;
+  thinking = false;
   updateTurn();
   showMessage("AI가 돌을 놓았어요! 이제 당신 차례예요 💗");
+}
+
+function hasNearbyStone(r, c) {
+  if (moves.length === 0) return true;
+
+  for (let dr = -2; dr <= 2; dr++) {
+    for (let dc = -2; dc <= 2; dc++) {
+      const rr = r + dr;
+      const cc = c + dc;
+
+      if (
+        rr >= 0 && rr < SIZE &&
+        cc >= 0 && cc < SIZE &&
+        board[rr][cc] !== 0
+      ) return true;
+    }
+  }
+
+  return false;
 }
 
 function chooseAiMove() {
@@ -583,8 +594,7 @@ function chooseAiMove() {
 
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
-      if (board[r][c] !== 0) continue;
-      if (!hasNearbyStone(r, c)) continue;
+      if (board[r][c] !== 0 || !hasNearbyStone(r, c)) continue;
 
       candidates.push({
         r, c,
@@ -593,46 +603,23 @@ function chooseAiMove() {
     }
   }
 
-  if (candidates.length === 0) {
-    return { r: 7, c: 7 };
-  }
+  if (!candidates.length) return { r: CENTER, c: CENTER };
 
   candidates.sort((a, b) => b.score - a.score);
 
   const difficulty = $("difficulty").value;
 
   if (difficulty === "easy") {
-    const top = candidates.slice(0, Math.min(8, candidates.length));
-    return top[Math.floor(Math.random() * top.length)];
+    const choices = candidates.slice(0, Math.min(8, candidates.length));
+    return choices[Math.floor(Math.random() * choices.length)];
   }
 
   if (difficulty === "normal") {
-    const top = candidates.slice(0, Math.min(3, candidates.length));
-    return top[Math.floor(Math.random() * top.length)];
+    const choices = candidates.slice(0, Math.min(3, candidates.length));
+    return choices[Math.floor(Math.random() * choices.length)];
   }
 
   return candidates[0];
-}
-
-function hasNearbyStone(r, c) {
-  for (let dr = -2; dr <= 2; dr++) {
-    for (let dc = -2; dc <= 2; dc++) {
-      if (dr === 0 && dc === 0) continue;
-
-      const rr = r + dr;
-      const cc = c + dc;
-
-      if (
-        rr >= 0 && rr < SIZE &&
-        cc >= 0 && cc < SIZE &&
-        board[rr][cc] !== 0
-      ) {
-        return true;
-      }
-    }
-  }
-
-  return moves.length === 0;
 }
 
 function evaluateMove(r, c) {
@@ -640,21 +627,18 @@ function evaluateMove(r, c) {
   let defense = 0;
 
   board[r][c] = 2;
-  for (const [dr, dc] of directions) {
+  for (const [dr, dc] of DIRECTIONS) {
     attack += lineScore(r, c, dr, dc, 2);
   }
   board[r][c] = 0;
 
   board[r][c] = 1;
-  for (const [dr, dc] of directions) {
+  for (const [dr, dc] of DIRECTIONS) {
     defense += lineScore(r, c, dr, dc, 1);
   }
   board[r][c] = 0;
 
-  const centerBonus = 14 - (
-    Math.abs(7 - r) + Math.abs(7 - c)
-  );
-
+  const centerBonus = 14 - Math.abs(7 - r) - Math.abs(7 - c);
   return Math.max(attack, defense * 0.95) + centerBonus;
 }
 
@@ -696,11 +680,10 @@ function lineScore(r, c, dr, dc, player) {
   return count * 5;
 }
 
-// --------------------------------------------------
-// 경기 종료 및 기록
-// --------------------------------------------------
-
+/* 경기 종료 */
 function finish(winner) {
+  if (gameOver) return;
+
   gameOver = true;
   thinking = false;
 
@@ -709,70 +692,68 @@ function finish(winner) {
     aiTimer = null;
   }
 
-  let resultText = "";
+  let result = "";
 
   if (winner === 0) {
-    resultText = "무승부!";
-    showMessage("무승부예요! 정말 팽팽한 승부였어요 🎀");
+    result = "무승부!";
   } else if (isLocalMode()) {
-    const winnerName = playerName(winner);
-    resultText = `${winnerName} 승리! 🏆`;
+    result = `${getPlayerName(winner)} 승리! 🏆`;
 
     if (winner === 1) localStats.player1++;
     else localStats.player2++;
-
-    showMessage(`${winnerName}님이 승리했습니다! 축하해요 💗`);
   } else if (winner === 1) {
-    resultText = "플레이어 승리! 🏆";
-    stats.wins++;
-    stats.streak++;
-    showMessage("축하해요! AI를 이겼어요! 🎉");
+    result = "플레이어 승리! 🏆";
+    aiStats.wins++;
+    aiStats.streak++;
   } else {
-    resultText = "AI 승리!";
-    stats.losses++;
-    stats.streak = 0;
-    showMessage("아쉬워요! 다음 판에는 이길 수 있어요 💗");
+    result = "AI 승리!";
+    aiStats.losses++;
+    aiStats.streak = 0;
   }
 
-  saveData();
+  saveStats();
   updateStats();
   updateTurn();
 
-  $("endResult").textContent = resultText;
-  $("endModal").classList.remove("hidden");
+  showMessage("경기가 끝났습니다! 춘천신협 사랑해요 💗");
+
+  // 팝업 표시
+  $("endResult").textContent = result;
+
+  const modal = $("endModal");
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
 }
 
 function updateStats() {
-  const total = stats.wins + stats.losses;
-  const rate = total ? Math.round(stats.wins / total * 100) : 0;
+  const total = aiStats.wins + aiStats.losses;
+  const rate = total === 0 ? 0 : Math.round(aiStats.wins / total * 100);
 
-  $("wins").textContent = stats.wins;
-  $("losses").textContent = stats.losses;
+  $("wins").textContent = aiStats.wins;
+  $("losses").textContent = aiStats.losses;
   $("winRate").textContent = `${rate}%`;
-  $("streak").textContent = stats.streak;
+  $("streak").textContent = aiStats.streak;
 
   $("localWins1").textContent = `${localStats.player1}승`;
   $("localWins2").textContent = `${localStats.player2}승`;
 
-  $("localPlayer1Label").textContent = playerName(1);
+  $("localPlayer1Label").textContent =
+    $("player1Name").value.trim() || "플레이어 1";
+
   $("localPlayer2Label").textContent =
     $("player2Name").value.trim() || "플레이어 2";
 }
 
-// --------------------------------------------------
-// 무르기
-// --------------------------------------------------
-
-function undo() {
+/* 무르기 */
+function undoMove() {
   if (gameOver || thinking || moves.length === 0) return;
 
-  const numberToUndo = isLocalMode() ? 1 : Math.min(2, moves.length);
+  const count = isLocalMode() ? 1 : Math.min(2, moves.length);
 
-  for (let i = 0; i < numberToUndo; i++) {
-    const last = moves.pop();
-    if (!last) break;
-
-    board[last.r][last.c] = 0;
+  for (let i = 0; i < count; i++) {
+    const move = moves.pop();
+    if (!move) break;
+    board[move.r][move.c] = 0;
   }
 
   lastMove = moves.length
@@ -785,33 +766,16 @@ function undo() {
 
   drawBoard();
   updateTurn();
-  showMessage("수를 무르고 다시 시작합니다! 🎀");
+  showMessage("마지막 수를 무르고 다시 시작합니다! 🎀");
 }
 
-// --------------------------------------------------
-// 버튼 및 설정
-// --------------------------------------------------
-
-function startGame() {
-  $("difficultySetting").style.display =
-    isLocalMode() ? "none" : "flex";
-
-  $("player2Setting").querySelector("label").textContent =
-    isLocalMode()
-      ? "플레이어 2 이름 (백돌)"
-      : "상대방";
-
-  $("player2Name").disabled = !isLocalMode();
-
-  updateStats();
-  initBoard();
-}
-
+/* 버튼 연결 */
 $("newGameBtn").addEventListener("click", startGame);
 $("modalNewGameBtn").addEventListener("click", startGame);
-$("undoBtn").addEventListener("click", undo);
+$("undoBtn").addEventListener("click", undoMove);
 
 $("gameMode").addEventListener("change", startGame);
+
 $("difficulty").addEventListener("change", () => {
   if (!isLocalMode()) {
     showMessage("난이도가 변경됐어요. 새 게임을 시작해 보세요!");
@@ -822,20 +786,20 @@ $("player1Name").addEventListener("input", updateStats);
 $("player2Name").addEventListener("input", updateStats);
 
 $("resetStatsBtn").addEventListener("click", () => {
-  if (!confirm("AI 대결 기록을 모두 초기화할까요?")) return;
+  if (!confirm("AI 대결 기록을 초기화할까요?")) return;
 
-  stats = { wins: 0, losses: 0, streak: 0 };
-  saveData();
+  aiStats = { wins: 0, losses: 0, streak: 0 };
+  saveStats();
   updateStats();
 });
 
 $("resetLocalBtn").addEventListener("click", () => {
-  if (!confirm("커스텀 매치 기록을 모두 초기화할까요?")) return;
+  if (!confirm("2인용 기록을 초기화할까요?")) return;
 
   localStats = { player1: 0, player2: 0 };
-  saveData();
+  saveStats();
   updateStats();
 });
 
-// 첫 게임 시작
+/* 게임 시작 */
 startGame();
