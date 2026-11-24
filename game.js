@@ -1,109 +1,322 @@
 
+/* ==========================================
+   HELLO KITTY GOMOKU
+   AI + 난이도 + 전적 + 무르기 + 금수 규칙
+   ========================================== */
+
 const SIZE = 15;
-const BLACK = 1; // 사람
-const WHITE = 2; // AI
+const EMPTY = 0;
+const BLACK = 1;
+const WHITE = 2;
 
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 
-const cells = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+const CELL = canvas.width / (SIZE + 1);
+const PAD = CELL;
+
+const directions = [
+  [1, 0],
+  [0, 1],
+  [1, 1],
+  [1, -1]
+];
+
+let board = [];
 let history = [];
 let currentPlayer = BLACK;
 let gameOver = false;
-let aiThinking = false;
+let thinking = false;
 let lastMove = null;
+let aiTimer = null;
 
-const winsEl = document.getElementById("wins");
-const lossesEl = document.getElementById("losses");
-const rateEl = document.getElementById("winRate");
-const streakEl = document.getElementById("streak");
-const messageEl = document.getElementById("message");
-const humanDot = document.getElementById("humanDot");
-const aiDot = document.getElementById("aiDot");
+const $ = id => document.getElementById(id);
 
-const directions = [
-  [1, 0], [0, 1], [1, 1], [1, -1]
-];
+/* ==========================================
+   전적 저장
+   ========================================== */
 
-function getStats() {
+function loadStats() {
   try {
-    return JSON.parse(localStorage.getItem("kittyGomokuStats")) ||
-      { wins: 0, losses: 0, streak: 0 };
+    const saved = JSON.parse(
+      localStorage.getItem("kittyGomokuStats")
+    );
+
+    return {
+      wins: Number(saved?.wins) || 0,
+      losses: Number(saved?.losses) || 0,
+      streak: Number(saved?.streak) || 0
+    };
   } catch {
     return { wins: 0, losses: 0, streak: 0 };
   }
 }
 
-function saveStats(stats) {
-  localStorage.setItem("kittyGomokuStats", JSON.stringify(stats));
+let stats = loadStats();
+
+function saveStats() {
+  localStorage.setItem(
+    "kittyGomokuStats",
+    JSON.stringify(stats)
+  );
   updateStats();
 }
 
 function updateStats() {
-  const s = getStats();
-  const total = s.wins + s.losses;
-  winsEl.textContent = s.wins;
-  lossesEl.textContent = s.losses;
-  rateEl.textContent = total ? Math.round(s.wins / total * 100) + "%" : "0%";
-  streakEl.textContent = s.streak;
+  const total = stats.wins + stats.losses;
+
+  $("wins").textContent = stats.wins;
+  $("losses").textContent = stats.losses;
+  $("streak").textContent = stats.streak;
+
+  $("winRate").textContent = total
+    ? Math.round(stats.wins / total * 100) + "%"
+    : "0%";
 }
 
-function setMessage(text) {
-  messageEl.textContent = text;
+/* ==========================================
+   게임 초기화
+   ========================================== */
+
+function emptyBoard() {
+  return Array.from(
+    { length: SIZE },
+    () => Array(SIZE).fill(EMPTY)
+  );
+}
+
+function showMessage(text) {
+  $("message").textContent = text;
 }
 
 function updateTurn() {
-  humanDot.classList.toggle("active", currentPlayer === BLACK && !gameOver);
-  aiDot.classList.toggle("active", currentPlayer === WHITE && !gameOver);
-  document.getElementById("undoBtn").disabled =
-    history.length === 0 || aiThinking;
+  if (gameOver) return;
+
+  if (thinking) {
+    $("turnLabel").textContent = "컴퓨터가 생각 중... 💭";
+  } else {
+    $("turnLabel").textContent =
+      currentPlayer === BLACK
+        ? "내 차례예요! 🎀"
+        : "컴퓨터 차례예요";
+  }
+
+  $("undoBtn").disabled =
+    thinking || history.length < 2 || gameOver;
 }
 
-function drawBoard() {
-  const w = canvas.width;
-  const pad = 42;
-  const step = (w - pad * 2) / (SIZE - 1);
+function startGame() {
+  if (aiTimer !== null) {
+    clearTimeout(aiTimer);
+    aiTimer = null;
+  }
 
-  ctx.clearRect(0, 0, w, w);
+  board = emptyBoard();
+  history = [];
 
-  const bg = ctx.createLinearGradient(0, 0, w, w);
-  bg.addColorStop(0, "#ffe8d1");
-  bg.addColorStop(1, "#ffd9c3");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, w, w);
+  currentPlayer = BLACK;
+  gameOver = false;
+  thinking = false;
+  lastMove = null;
 
-  // 은은한 장식
-  ctx.fillStyle = "rgba(255,255,255,.28)";
-  for (let i = 0; i < 20; i++) {
-    const x = (i * 97 + 31) % w;
-    const y = (i * 137 + 19) % w;
+  showMessage("준비됐나요? 첫 수를 놓아보세요! 🎀");
+
+  updateTurn();
+  drawBoard();
+}
+
+/* ==========================================
+   고양이 돌 디자인
+   ========================================== */
+
+function drawBow(x, y, scale) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+
+  ctx.fillStyle = "#ff4f91";
+  ctx.strokeStyle = "#d93476";
+  ctx.lineWidth = 1.5;
+
+  ctx.beginPath();
+  ctx.moveTo(-3, -3);
+  ctx.lineTo(-17, -13);
+  ctx.lineTo(-18, 3);
+  ctx.lineTo(-5, 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(3, -3);
+  ctx.lineTo(17, -13);
+  ctx.lineTo(18, 3);
+  ctx.lineTo(5, 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(0, -3, 5, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffb2cc";
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawCat(x, y, side) {
+  const r = CELL * 0.37;
+
+  ctx.save();
+  ctx.translate(x, y);
+
+  const faceColor =
+    side === BLACK ? "#fffdfd" : "#f5a0c1";
+
+  const outlineColor =
+    side === BLACK ? "#d7a7b8" : "#d66c97";
+
+  // 그림자
+  ctx.shadowColor = "#8c536455";
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 2;
+
+  // 귀
+  ctx.fillStyle = faceColor;
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = 1.5;
+
+  for (const sign of [-1, 1]) {
     ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.moveTo(sign * r * 0.55, -r * 0.45);
+    ctx.lineTo(sign * r * 0.9, -r * 1.15);
+    ctx.lineTo(sign * r * 1.05, -r * 0.25);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // 얼굴
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 눈
+  ctx.fillStyle = "#45343b";
+
+  for (const sign of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(
+      sign * r * 0.36,
+      -r * 0.05,
+      2.2,
+      3.3,
+      0,
+      0,
+      Math.PI * 2
+    );
     ctx.fill();
   }
 
-  // 바둑판 선
-  ctx.strokeStyle = "#bd806d";
-  ctx.lineWidth = 2;
+  // 코
+  ctx.fillStyle = "#e99a37";
+  ctx.beginPath();
+  ctx.ellipse(
+    0,
+    r * 0.18,
+    2.7,
+    2,
+    0,
+    0,
+    Math.PI * 2
+  );
+  ctx.fill();
+
+  // 수염
+  ctx.strokeStyle = "#92717d";
+  ctx.lineWidth = 1;
+
+  for (const sign of [-1, 1]) {
+    for (let i = 0; i < 2; i++) {
+      ctx.beginPath();
+      ctx.moveTo(
+        sign * r * 0.55,
+        r * (0.16 + i * 0.2)
+      );
+      ctx.lineTo(
+        sign * r * 1.05,
+        r * (0.05 + i * 0.3)
+      );
+      ctx.stroke();
+    }
+  }
+
+  // 리본
+  if (side === BLACK) {
+    drawBow(r * 0.58, -r * 0.72, 0.65);
+  } else {
+    drawBow(-r * 0.58, -r * 0.72, 0.65);
+  }
+
+  ctx.restore();
+}
+
+/* ==========================================
+   오목판 그리기
+   ========================================== */
+
+function drawBoard() {
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // 바탕
+  ctx.fillStyle = "#f8d8b0";
+  ctx.fillRect(0, 0, w, h);
+
+  // 장식
+  ctx.fillStyle = "#efb9c9";
+  ctx.font = "18px Arial";
+  ctx.fillText("♡", 12, 23);
+  ctx.fillText("♡", w - 27, h - 10);
+
+  // 격자
+  ctx.strokeStyle = "#bd8a62";
+  ctx.lineWidth = 1.3;
+
   for (let i = 0; i < SIZE; i++) {
-    const p = pad + i * step;
+    const p = PAD + i * CELL;
+
     ctx.beginPath();
-    ctx.moveTo(pad, p);
-    ctx.lineTo(w - pad, p);
+    ctx.moveTo(PAD, p);
+    ctx.lineTo(w - PAD, p);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(p, pad);
-    ctx.lineTo(p, w - pad);
+    ctx.moveTo(p, PAD);
+    ctx.lineTo(p, h - PAD);
     ctx.stroke();
   }
 
   // 화점
-  ctx.fillStyle = "#a86e61";
+  ctx.fillStyle = "#9c694b";
+
   [3, 7, 11].forEach(r => {
     [3, 7, 11].forEach(c => {
       ctx.beginPath();
-      ctx.arc(pad + c * step, pad + r * step, 5, 0, Math.PI * 2);
+      ctx.arc(
+        PAD + c * CELL,
+        PAD + r * CELL,
+        3,
+        0,
+        Math.PI * 2
+      );
       ctx.fill();
     });
   });
@@ -111,531 +324,722 @@ function drawBoard() {
   // 돌 그리기
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
-      if (cells[r][c]) {
-        drawCatStone(r, c, cells[r][c], pad, step);
+      if (board[r][c] !== EMPTY) {
+        drawCat(
+          PAD + c * CELL,
+          PAD + r * CELL,
+          board[r][c]
+        );
       }
     }
   }
 
   // 마지막 수 표시
   if (lastMove) {
-    const x = pad + lastMove.c * step;
-    const y = pad + lastMove.r * step;
-    ctx.strokeStyle = "#e04488";
-    ctx.lineWidth = 3;
+    const x = PAD + lastMove.c * CELL;
+    const y = PAD + lastMove.r * CELL;
+
+    ctx.strokeStyle = "#ff3d87";
+    ctx.lineWidth = 2;
+
     ctx.beginPath();
-    ctx.arc(x, y, 23, 0, Math.PI * 2);
+    ctx.arc(x, y, CELL * 0.47, 0, Math.PI * 2);
     ctx.stroke();
   }
-
-  // 바깥쪽 작은 리본 장식
-  drawTinyBow(18, 18, 0.65);
-  drawTinyBow(w - 18, 18, 0.65);
-  drawTinyBow(18, w - 18, 0.65);
-  drawTinyBow(w - 18, w - 18, 0.65);
 }
 
-function drawTinyBow(x, y, scale = 1) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(scale, scale);
-  ctx.fillStyle = "#ed78a7";
-  ctx.beginPath();
-  ctx.ellipse(-8, 0, 9, 6, -0.5, 0, Math.PI * 2);
-  ctx.ellipse(8, 0, 9, 6, 0.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#c94e80";
-  ctx.beginPath();
-  ctx.arc(0, 0, 3, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
+/* ==========================================
+   기본 오목 판정
+   ========================================== */
 
-function drawCatStone(r, c, player, pad, step) {
-  const x = pad + c * step;
-  const y = pad + r * step;
-  const radius = step * 0.39;
-
-  ctx.save();
-
-  // 그림자
-  ctx.fillStyle = "rgba(120,70,80,.18)";
-  ctx.beginPath();
-  ctx.ellipse(x + 2, y + 5, radius, radius * 0.83, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // 귀
-  ctx.fillStyle = player === BLACK ? "#fffdfd" : "#f7a4c5";
-  ctx.strokeStyle = player === BLACK ? "#d7b8c2" : "#d96f9d";
-  ctx.lineWidth = 2;
-
-  ctx.beginPath();
-  ctx.moveTo(x - radius * .75, y - radius * .35);
-  ctx.lineTo(x - radius * .72, y - radius * 1.1);
-  ctx.lineTo(x - radius * .15, y - radius * .7);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(x + radius * .75, y - radius * .35);
-  ctx.lineTo(x + radius * .72, y - radius * 1.1);
-  ctx.lineTo(x + radius * .15, y - radius * .7);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  // 얼굴
-  const face = ctx.createRadialGradient(
-    x - radius * .3, y - radius * .4, 2,
-    x, y, radius * 1.2
-  );
-  if (player === BLACK) {
-    face.addColorStop(0, "#ffffff");
-    face.addColorStop(1, "#f8eaf0");
-  } else {
-    face.addColorStop(0, "#ffd7e7");
-    face.addColorStop(1, "#ef8db5");
-  }
-
-  ctx.fillStyle = face;
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-
-  // 눈
-  ctx.fillStyle = "#59414b";
-  [-1, 1].forEach(side => {
-    ctx.beginPath();
-    ctx.ellipse(x + side * radius * .34, y - radius * .04,
-      radius * .075, radius * .12, 0, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  // 코
-  ctx.fillStyle = "#e98b9e";
-  ctx.beginPath();
-  ctx.arc(x, y + radius * .17, radius * .075, 0, Math.PI * 2);
-  ctx.fill();
-
-  // 수염
-  ctx.strokeStyle = player === BLACK ? "#bda4ae" : "#c66e91";
-  ctx.lineWidth = 1.5;
-  for (const side of [-1, 1]) {
-    for (let i = 0; i < 2; i++) {
-      ctx.beginPath();
-      ctx.moveTo(x + side * radius * .48, y + radius * (.13 + i * .18));
-      ctx.lineTo(x + side * radius * .9, y + radius * (.02 + i * .3));
-      ctx.stroke();
-    }
-  }
-
-  // 볼터치
-  ctx.fillStyle = player === BLACK ? "rgba(255,150,180,.35)" : "rgba(255,255,255,.5)";
-  [-1, 1].forEach(side => {
-    ctx.beginPath();
-    ctx.ellipse(x + side * radius * .55, y + radius * .35,
-      radius * .14, radius * .08, 0, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  // 사람 돌에는 리본, AI 돌에는 작은 하트 장식
-  if (player === BLACK) {
-    drawBowAt(x + radius * .52, y - radius * .65, radius * .55);
-  } else {
-    ctx.fillStyle = "#fff8fc";
-    drawHeart(x + radius * .55, y - radius * .72, radius * .25);
-  }
-
-  ctx.restore();
-}
-
-function drawBowAt(x, y, size) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.fillStyle = "#ed5c9b";
-  ctx.strokeStyle = "#c9437d";
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.ellipse(-size * .48, 0, size * .55, size * .38, -.4, 0, Math.PI * 2);
-  ctx.ellipse(size * .48, 0, size * .55, size * .38, .4, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = "#ffd5e5";
-  ctx.beginPath();
-  ctx.arc(0, 0, size * .19, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawHeart(x, y, size) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(size / 10, size / 10);
-  ctx.beginPath();
-  ctx.moveTo(0, 8);
-  ctx.bezierCurveTo(-18, -4, -10, -16, 0, -7);
-  ctx.bezierCurveTo(10, -16, 18, -4, 0, 8);
-  ctx.fill();
-  ctx.restore();
-}
-
-function inside(r, c) {
-  return r >= 0 && r < SIZE && c >= 0 && c < SIZE;
-}
-
-function countLine(r, c, dr, dc, player) {
+function countLine(r, c, dr, dc, side) {
   let count = 1;
+
   for (const sign of [-1, 1]) {
     let nr = r + dr * sign;
     let nc = c + dc * sign;
-    while (inside(nr, nc) && cells[nr][nc] === player) {
+
+    while (
+      nr >= 0 &&
+      nr < SIZE &&
+      nc >= 0 &&
+      nc < SIZE &&
+      board[nr][nc] === side
+    ) {
       count++;
       nr += dr * sign;
       nc += dc * sign;
     }
   }
+
   return count;
 }
 
-function isOverline(r, c) {
+function hasOverline(r, c) {
   return directions.some(([dr, dc]) =>
     countLine(r, c, dr, dc, BLACK) >= 6
   );
 }
 
-function isExactFive(r, c, player) {
+function hasExactFive(r, c) {
   return directions.some(([dr, dc]) =>
-    countLine(r, c, dr, dc, player) === 5
+    countLine(r, c, dr, dc, BLACK) === 5
   );
 }
 
-// 해당 방향에서 한 수로 다섯 개를 만들 수 있는지 확인
-function hasFourThreat(r, c, dr, dc) {
-  for (let k = -4; k <= 4; k++) {
-    if (k === 0) continue;
-    const nr = r + dr * k;
-    const nc = c + dc * k;
-    if (!inside(nr, nc) || cells[nr][nc] !== 0) continue;
+function isWin(r, c, side) {
+  for (const [dr, dc] of directions) {
+    const count = countLine(r, c, dr, dc, side);
 
-    cells[nr][nc] = BLACK;
-    const wins = countLine(nr, nc, dr, dc, BLACK) === 5;
-    cells[nr][nc] = 0;
-    if (wins) return true;
-  }
-  return false;
-}
-
-// 다음 수로 열린 4를 만들 수 있는 3의 형태인지 간단 판정
-function hasOpenThree(r, c, dr, dc) {
-  for (let k = -3; k <= 3; k++) {
-    if (k === 0) continue;
-    const nr = r + dr * k;
-    const nc = c + dc * k;
-    if (!inside(nr, nc) || cells[nr][nc] !== 0) continue;
-
-    cells[nr][nc] = BLACK;
-
-    let openFour = false;
-    for (let j = -4; j <= 4; j++) {
-      if (j === 0) continue;
-      const er = nr + dr * j;
-      const ec = nc + dc * j;
-      if (!inside(er, ec) || cells[er][ec] !== 0) continue;
-
-      cells[er][ec] = BLACK;
-      const length = countLine(er, ec, dr, dc, BLACK);
-      cells[er][ec] = 0;
-
-      if (length === 5) {
-        // 열린 양 끝이 있는 네 개의 연속 형태인지 검사
-        let left = 0, right = 0;
-        let rr = nr, cc = nc;
-        while (inside(rr - dr, cc - dc) &&
-               cells[rr - dr][cc - dc] === BLACK) {
-          rr -= dr; cc -= dc;
-        }
-        if (inside(rr - dr, cc - dc) &&
-            cells[rr - dr][cc - dc] === 0) left = 1;
-
-        rr = nr; cc = nc;
-        while (inside(rr + dr, cc + dc) &&
-               cells[rr + dr][cc + dc] === BLACK) {
-          rr += dr; cc += dc;
-        }
-        if (inside(rr + dr, cc + dc) &&
-            cells[rr + dr][cc + dc] === 0) right = 1;
-
-        if (left && right) openFour = true;
-      }
-      if (openFour) break;
+    if (side === BLACK && count === 5) {
+      return true;
     }
 
-    cells[nr][nc] = 0;
-    if (openFour) return true;
+    if (side === WHITE && count >= 5) {
+      return true;
+    }
   }
+
   return false;
 }
 
-function forbiddenReason(r, c) {
-  if (!inside(r, c) || cells[r][c] !== 0) return "이미 돌이 놓인 자리야.";
+/* ==========================================
+   렌주 금수 판정 보조 함수
+   ========================================== */
 
-  cells[r][c] = BLACK;
+// 한 방향에서 5개의 연속된 칸이 모두 흑돌인지 확인
+function isFiveWindow(r, c, dr, dc, start) {
+  for (let i = 0; i < 5; i++) {
+    const nr = r + dr * (start + i);
+    const nc = c + dc * (start + i);
 
-  if (isOverline(r, c)) {
-    cells[r][c] = 0;
-    return "장목 금수야! 여섯 개 이상은 놓을 수 없어.";
+    if (
+      nr < 0 ||
+      nr >= SIZE ||
+      nc < 0 ||
+      nc >= SIZE ||
+      board[nr][nc] !== BLACK
+    ) {
+      return false;
+    }
   }
 
-  // 정확히 다섯 개는 금수보다 우선
-  if (isExactFive(r, c, BLACK)) {
-    cells[r][c] = 0;
-    return "";
-  }
-
-  let fours = 0;
-  let threes = 0;
-
-  for (const [dr, dc] of directions) {
-    if (hasFourThreat(r, c, dr, dc)) fours++;
-    if (hasOpenThree(r, c, dr, dc)) threes++;
-  }
-
-  cells[r][c] = 0;
-
-  if (fours >= 2) return "44 금수야! 다른 자리를 골라줘.";
-  if (threes >= 2) return "33 금수야! 다른 자리를 골라줘.";
-  return "";
+  return true;
 }
 
-function placeStone(r, c, player) {
-  cells[r][c] = player;
-  history.push({ r, c, player });
+// 한 방향의 4목 패턴을 서로 다른 형태로 수집
+function getFourPatterns(r, c) {
+  const patterns = new Set();
+
+  for (const [dr, dc] of directions) {
+    for (let k = -4; k <= 4; k++) {
+      const nr = r + dr * k;
+      const nc = c + dc * k;
+
+      if (
+        nr < 0 ||
+        nr >= SIZE ||
+        nc < 0 ||
+        nc >= SIZE ||
+        board[nr][nc] !== EMPTY
+      ) {
+        continue;
+      }
+
+      // 가상의 완성 수
+      board[nr][nc] = BLACK;
+
+      const overline = hasOverline(nr, nc);
+      const exactFive = hasExactFive(nr, nc);
+
+      if (!overline && exactFive) {
+        // 실제 5목을 만드는 5칸 창 찾기
+        for (const [dr2, dc2] of directions) {
+          if (dr2 !== dr || dc2 !== dc) continue;
+
+          for (let start = -4; start <= 0; start++) {
+            if (!isFiveWindow(r, c, dr, dc, start)) {
+              continue;
+            }
+
+            const stones = [];
+
+            for (let i = 0; i < 5; i++) {
+              const wr = r + dr * (start + i);
+              const wc = c + dc * (start + i);
+
+              if (board[wr][wc] === BLACK) {
+                stones.push(wr + "," + wc);
+              }
+            }
+
+            // 완성 지점을 제외한 4개의 흑돌
+            const key = stones
+              .filter(pos => pos !== nr + "," + nc)
+              .sort()
+              .join("|");
+
+            if (key.split("|").length === 4) {
+              patterns.add(key);
+            }
+          }
+        }
+      }
+
+      board[nr][nc] = EMPTY;
+    }
+  }
+
+  return patterns;
+}
+
+/* ==========================================
+   열린 4 판정
+   ========================================== */
+
+function makesStraightOpenFour(
+  r,
+  c,
+  dr,
+  dc,
+  extensionR,
+  extensionC
+) {
+  for (let start = -5; start <= 0; start++) {
+    const positions = [];
+
+    let valid = true;
+
+    for (let i = 0; i < 6; i++) {
+      const nr = r + dr * (start + i);
+      const nc = c + dc * (start + i);
+
+      if (
+        nr < 0 ||
+        nr >= SIZE ||
+        nc < 0 ||
+        nc >= SIZE
+      ) {
+        valid = false;
+        break;
+      }
+
+      positions.push([nr, nc]);
+    }
+
+    if (!valid) continue;
+
+    // 양쪽 끝이 모두 비어 있어야 열린 4
+    const first = positions[0];
+    const last = positions[5];
+
+    if (
+      board[first[0]][first[1]] !== EMPTY ||
+      board[last[0]][last[1]] !== EMPTY
+    ) {
+      continue;
+    }
+
+    // 가운데 네 칸이 모두 흑돌인지 확인
+    let fourStones = true;
+
+    for (let i = 1; i <= 4; i++) {
+      const [nr, nc] = positions[i];
+
+      if (board[nr][nc] !== BLACK) {
+        fourStones = false;
+        break;
+      }
+    }
+
+    if (!fourStones) continue;
+
+    // 기존 수와 확장 수가 해당 열린 4에 포함되는지 확인
+    const includesOriginal = positions.some(
+      ([nr, nc]) => nr === r && nc === c
+    );
+
+    const includesExtension = positions.some(
+      ([nr, nc]) =>
+        nr === extensionR && nc === extensionC
+    );
+
+    if (includesOriginal && includesExtension) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/* ==========================================
+   열린 3 판정
+   ========================================== */
+
+function countOpenThrees(r, c) {
+  let total = 0;
+
+  for (const [dr, dc] of directions) {
+    let found = false;
+
+    // 다음 수로 확장할 수 있는 빈칸 탐색
+    for (let k = -4; k <= 4; k++) {
+      if (k === 0) continue;
+
+      const nr = r + dr * k;
+      const nc = c + dc * k;
+
+      if (
+        nr < 0 ||
+        nr >= SIZE ||
+        nc < 0 ||
+        nc >= SIZE ||
+        board[nr][nc] !== EMPTY
+      ) {
+        continue;
+      }
+
+      // 가상의 확장 수
+      board[nr][nc] = BLACK;
+
+      const overline = hasOverline(nr, nc);
+      const exactFive = hasExactFive(nr, nc);
+
+      let createsOpenFour = false;
+
+      if (!overline && !exactFive) {
+        // 확장 수가 44 금수라면 합법적인 열린 3 확장이 아님
+        const fourCount = getFourPatterns(nr, nc).size;
+
+        if (fourCount < 2) {
+          createsOpenFour = makesStraightOpenFour(
+            r,
+            c,
+            dr,
+            dc,
+            nr,
+            nc
+          );
+        }
+      }
+
+      board[nr][nc] = EMPTY;
+
+      if (createsOpenFour) {
+        found = true;
+        break;
+      }
+    }
+
+    if (found) total++;
+  }
+
+  return total;
+}
+
+/* ==========================================
+   최종 금수 판정
+   ========================================== */
+
+function forbidden(r, c) {
+  if (board[r][c] !== EMPTY) {
+    return "이미 돌이 놓여 있어요!";
+  }
+
+  board[r][c] = BLACK;
+
+  // 장목 우선 검사
+  if (hasOverline(r, c)) {
+    board[r][c] = EMPTY;
+    return "장목 금수입니다! 6개 이상 연결할 수 없어요.";
+  }
+
+  // 정확히 5목은 승리이므로 33·44보다 우선
+  if (hasExactFive(r, c)) {
+    board[r][c] = EMPTY;
+    return null;
+  }
+
+  // 서로 다른 4목 형태가 2개 이상이면 44
+  const fours = getFourPatterns(r, c).size;
+
+  if (fours >= 2) {
+    board[r][c] = EMPTY;
+    return "44 금수입니다! 다른 곳에 놓아주세요.";
+  }
+
+  // 합법적으로 열린 4를 만들 수 있는 방향이 2개 이상이면 33
+  const threes = countOpenThrees(r, c);
+
+  board[r][c] = EMPTY;
+
+  if (threes >= 2) {
+    return "33 금수입니다! 다른 곳에 놓아주세요.";
+  }
+
+  return null;
+}
+
+/* ==========================================
+   돌 놓기와 승리 처리
+   ========================================== */
+
+function place(r, c, side) {
+  board[r][c] = side;
+
+  history.push({
+    r,
+    c,
+    side
+  });
+
   lastMove = { r, c };
 
   drawBoard();
-
-  if (isExactFive(r, c, player) || (player === WHITE &&
-      directions.some(([dr, dc]) => countLine(r, c, dr, dc, WHITE) >= 5))) {
-    finishGame(player);
-    return true;
-  }
-  return false;
 }
 
-function finishGame(winner) {
+function finish(side) {
   gameOver = true;
-  aiThinking = false;
+  thinking = false;
 
-  const stats = getStats();
-  if (winner === BLACK) {
+  if (side === BLACK) {
     stats.wins++;
     stats.streak++;
-    setMessage("우와! 내가 이겼어! 축하해, 오목 천재냥! 🎀");
+
+    showMessage("축하해요! 내가 이겼어요! 🎀💗");
+    $("turnLabel").textContent = "내가 이겼어요! 🎉";
   } else {
     stats.losses++;
     stats.streak = 0;
-    setMessage("AI가 이겼어! 다음 판에는 꼭 이겨보자 💗");
+
+    showMessage("아쉽지만 다음에는 이길 수 있어요! 💕");
+    $("turnLabel").textContent = "컴퓨터 승리!";
   }
-  saveStats(stats);
+
+  saveStats();
   updateTurn();
 }
 
-function startNewGame() {
-  for (let r = 0; r < SIZE; r++) cells[r].fill(0);
-  history = [];
-  currentPlayer = BLACK;
-  gameOver = false;
-  aiThinking = false;
-  lastMove = null;
-  setMessage("내 차례야! 원하는 곳에 돌을 놓아봐 💗");
-  drawBoard();
-  updateTurn();
-}
+/* ==========================================
+   AI 평가 함수
+   ========================================== */
 
-function undoMove() {
-  if (aiThinking || history.length === 0 || gameOver) return;
+function evaluateAt(r, c, side) {
+  let score = 0;
 
-  // 사람과 AI가 둔 수를 함께 되돌리기
-  let count = Math.min(2, history.length);
-  while (count--) {
-    const move = history.pop();
-    cells[move.r][move.c] = 0;
+  for (const [dr, dc] of directions) {
+    let count = 1;
+    let open = 0;
+
+    for (const sign of [-1, 1]) {
+      let nr = r + dr * sign;
+      let nc = c + dc * sign;
+
+      while (
+        nr >= 0 &&
+        nr < SIZE &&
+        nc >= 0 &&
+        nc < SIZE &&
+        board[nr][nc] === side
+      ) {
+        count++;
+
+        nr += dr * sign;
+        nc += dc * sign;
+      }
+
+      if (
+        nr >= 0 &&
+        nr < SIZE &&
+        nc >= 0 &&
+        nc < SIZE &&
+        board[nr][nc] === EMPTY
+      ) {
+        open++;
+      }
+    }
+
+    if (count >= 5) {
+      score += 100000;
+    } else if (count === 4 && open === 2) {
+      score += 12000;
+    } else if (count === 4 && open === 1) {
+      score += 3000;
+    } else if (count === 3 && open === 2) {
+      score += 900;
+    } else if (count === 3 && open === 1) {
+      score += 150;
+    } else if (count === 2 && open === 2) {
+      score += 70;
+    } else {
+      score += count * 5;
+    }
   }
 
-  currentPlayer = BLACK;
-  lastMove = history.length
-    ? { r: history[history.length - 1].r, c: history[history.length - 1].c }
-    : null;
-
-  setMessage("한 수 되돌렸어. 다시 생각해봐! 🌸");
-  drawBoard();
-  updateTurn();
+  return score;
 }
 
 function getCandidates() {
   const found = new Set();
-  const candidates = [];
 
-  if (history.length === 0) return [{ r: 7, c: 7 }];
+  if (history.length === 0) {
+    return [{ r: 7, c: 7 }];
+  }
 
-  for (let r = 0; r < SIZE; r++) {
-    for (let c = 0; c < SIZE; c++) {
-      if (cells[r][c] !== 0) continue;
+  for (const move of history) {
+    for (let dr = -2; dr <= 2; dr++) {
+      for (let dc = -2; dc <= 2; dc++) {
+        const r = move.r + dr;
+        const c = move.c + dc;
 
-      let near = false;
-      for (let dr = -2; dr <= 2 && !near; dr++) {
-        for (let dc = -2; dc <= 2; dc++) {
-          if (inside(r + dr, c + dc) && cells[r + dr][c + dc]) {
-            near = true;
-            break;
-          }
-        }
-      }
-      if (near) {
-        const key = r + "," + c;
-        if (!found.has(key)) {
-          found.add(key);
-          candidates.push({ r, c });
+        if (
+          r >= 0 &&
+          r < SIZE &&
+          c >= 0 &&
+          c < SIZE &&
+          board[r][c] === EMPTY
+        ) {
+          found.add(r + "," + c);
         }
       }
     }
   }
-  return candidates;
+
+  return [...found].map(value => {
+    const [r, c] = value.split(",").map(Number);
+    return { r, c };
+  });
 }
 
-function scorePoint(r, c, player) {
-  cells[r][c] = player;
-  let score = 0;
+function chooseAI() {
+  const level = $("difficulty").value;
+  const moves = getCandidates();
 
-  for (const [dr, dc] of directions) {
-    const length = countLine(r, c, dr, dc, player);
-    const ends = countOpenEnds(r, c, dr, dc, player);
-
-    if (length >= 5) score += 100000;
-    else if (length === 4 && ends === 2) score += 12000;
-    else if (length === 4) score += 3000;
-    else if (length === 3 && ends === 2) score += 900;
-    else if (length === 3) score += 250;
-    else if (length === 2 && ends === 2) score += 80;
-    else if (length === 2) score += 20;
-  }
-
-  cells[r][c] = 0;
-  return score;
-}
-
-function countOpenEnds(r, c, dr, dc, player) {
-  let open = 0;
-
-  for (const sign of [-1, 1]) {
-    let nr = r, nc = c;
-    while (inside(nr + dr * sign, nc + dc * sign) &&
-           cells[nr + dr * sign][nc + dc * sign] === player) {
-      nr += dr * sign;
-      nc += dc * sign;
-    }
-    const er = nr + dr * sign;
-    const ec = nc + dc * sign;
-    if (inside(er, ec) && cells[er][ec] === 0) open++;
-  }
-  return open;
-}
-
-function chooseAIMove() {
-  const level = document.getElementById("difficulty").value;
-  const candidates = getCandidates();
-  let best = [];
+  let bestMove = null;
   let bestScore = -Infinity;
 
-  for (const move of candidates) {
-    const attack = scorePoint(move.r, move.c, WHITE);
-    const defense = scorePoint(move.r, move.c, BLACK);
-    let score = attack + defense * 0.92;
+  for (const move of moves) {
+    const { r, c } = move;
 
-    if (level === "easy") score += Math.random() * 500;
-    if (level === "normal") score += Math.random() * 100;
-    if (level === "hard") {
-      score += attack * 0.15 + defense * 0.15;
+    // 공격 점수
+    board[r][c] = WHITE;
+    const attack = evaluateAt(r, c, WHITE);
+
+    // 방어 점수
+    board[r][c] = BLACK;
+    const defense = evaluateAt(r, c, BLACK);
+
+    board[r][c] = EMPTY;
+
+    let score = attack + defense;
+
+    const center =
+      7 - Math.abs(7 - r) - Math.abs(7 - c);
+
+    score += center * 2;
+
+    if (level === "easy") {
+      score = attack + Math.random() * 100;
+    } else if (level === "normal") {
+      score = attack * 1.05 + defense * 0.95;
+    } else if (level === "hard") {
+      score = attack * 1.2 + defense * 1.1;
     }
 
     if (score > bestScore) {
       bestScore = score;
-      best = [move];
-    } else if (score === bestScore) {
-      best.push(move);
+      bestMove = move;
     }
   }
 
-  return best[Math.floor(Math.random() * best.length)] || { r: 7, c: 7 };
+  return bestMove;
 }
 
-function aiTurn() {
+/* ==========================================
+   컴퓨터 차례
+   ========================================== */
+
+function computerTurn() {
   if (gameOver) return;
 
-  aiThinking = true;
-  setMessage("AI 고양이가 생각 중이야... 🐾");
-  updateTurn();
+  thinking = true;
+  currentPlayer = WHITE;
 
-  setTimeout(() => {
+  updateTurn();
+  showMessage("컴퓨터가 다음 수를 생각하고 있어요... 💭");
+
+  aiTimer = setTimeout(() => {
+    aiTimer = null;
+
     if (gameOver) return;
 
-    const move = chooseAIMove();
-    if (move) {
-      const won = placeStone(move.r, move.c, WHITE);
-      if (!won) {
-        currentPlayer = BLACK;
-        setMessage("내 차례야! 좋은 자리를 찾아봐 💗");
-      }
+    const move = chooseAI();
+
+    if (!move) {
+      gameOver = true;
+      showMessage("무승부예요! 다시 도전해 보세요.");
+      updateTurn();
+      return;
     }
 
-    aiThinking = false;
+    place(move.r, move.c, WHITE);
+
+    if (isWin(move.r, move.c, WHITE)) {
+      finish(WHITE);
+      return;
+    }
+
+    if (history.length === SIZE * SIZE) {
+      gameOver = true;
+      thinking = false;
+
+      showMessage("무승부예요! 다시 도전해 보세요.");
+      updateTurn();
+      return;
+    }
+
+    thinking = false;
+    currentPlayer = BLACK;
+
+    showMessage("내 차례예요! 어디에 놓을까요? 🎀");
+
     updateTurn();
+    drawBoard();
   }, 350);
 }
 
-function handleBoardClick(event) {
-  if (gameOver || aiThinking || currentPlayer !== BLACK) return;
+/* ==========================================
+   사용자 클릭
+   ========================================== */
 
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  const x = (event.clientX - rect.left) * scaleX;
-  const y = (event.clientY - rect.top) * scaleY;
-
-  const pad = 42;
-  const step = (canvas.width - pad * 2) / (SIZE - 1);
-  const c = Math.round((x - pad) / step);
-  const r = Math.round((y - pad) / step);
-
-  if (!inside(r, c)) return;
-
-  const reason = forbiddenReason(r, c);
-  if (reason) {
-    setMessage(reason);
+function handleClick(event) {
+  if (gameOver || thinking || currentPlayer !== BLACK) {
     return;
   }
 
-  const won = placeStone(r, c, BLACK);
-  if (won) return;
+  const rect = canvas.getBoundingClientRect();
 
-  currentPlayer = WHITE;
-  updateTurn();
-  aiTurn();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+
+  const x = (event.clientX - rect.left) * scaleX;
+  const y = (event.clientY - rect.top) * scaleY;
+
+  const c = Math.round((x - PAD) / CELL);
+  const r = Math.round((y - PAD) / CELL);
+
+  if (
+    r < 0 ||
+    r >= SIZE ||
+    c < 0 ||
+    c >= SIZE
+  ) {
+    return;
+  }
+
+  if (board[r][c] !== EMPTY) {
+    showMessage("이미 돌이 놓인 자리예요! 💗");
+    return;
+  }
+
+  const ban = forbidden(r, c);
+
+  if (ban) {
+    showMessage(ban);
+    return;
+  }
+
+  place(r, c, BLACK);
+
+  if (isWin(r, c, BLACK)) {
+    finish(BLACK);
+    return;
+  }
+
+  if (history.length === SIZE * SIZE) {
+    gameOver = true;
+    showMessage("무승부예요!");
+    updateTurn();
+    return;
+  }
+
+  computerTurn();
 }
 
-canvas.addEventListener("click", handleBoardClick);
+/* ==========================================
+   무르기
+   ========================================== */
 
-document.getElementById("restartBtn").addEventListener("click", startNewGame);
-document.getElementById("undoBtn").addEventListener("click", undoMove);
-
-document.getElementById("resetStatsBtn").addEventListener("click", () => {
-  if (confirm("저장된 승패 기록을 모두 초기화할까?")) {
-    saveStats({ wins: 0, losses: 0, streak: 0 });
+function undo() {
+  if (
+    thinking ||
+    gameOver ||
+    history.length < 2
+  ) {
+    return;
   }
+
+  if (aiTimer !== null) {
+    clearTimeout(aiTimer);
+    aiTimer = null;
+  }
+
+  // 사람과 컴퓨터의 수를 함께 취소
+  for (let i = 0; i < 2; i++) {
+    const last = history.pop();
+
+    if (!last) break;
+
+    board[last.r][last.c] = EMPTY;
+  }
+
+  currentPlayer = BLACK;
+  thinking = false;
+  lastMove = history.length
+    ? history[history.length - 1]
+    : null;
+
+  showMessage("두 수를 되돌렸어요. 다시 생각해 보세요!");
+
+  updateTurn();
+  drawBoard();
+}
+
+/* ==========================================
+   버튼 이벤트
+   ========================================== */
+
+canvas.addEventListener("click", handleClick);
+
+$("newGameBtn").addEventListener(
+  "click",
+  startGame
+);
+
+$("undoBtn").addEventListener(
+  "click",
+  undo
+);
+
+$("resetStatsBtn").addEventListener("click", () => {
+  if (!confirm("게임 기록을 모두 초기화할까요?")) {
+    return;
+  }
+
+  stats = {
+    wins: 0,
+    losses: 0,
+    streak: 0
+  };
+
+  saveStats();
+
+  showMessage("기록을 초기화했어요. 다시 시작해 볼까요!");
 });
 
-updateStats();
-startNewGame();
+/* ==========================================
+   게임 실행
+   ========================================== */
 
+updateStats();
+startGame();
