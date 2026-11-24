@@ -3,71 +3,134 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>헬로키티 오목</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>헬로키티 오목 🎀</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main class="app">
     <header class="hero">
-      <div class="ribbon">🎀</div>
-      <p class="small-title">MY LOVELY GOMOKU</p>
-      <h1>HELLO KITTY 오목</h1>
-      <p class="subtitle">귀여운 고양이 친구와 오목 한 판! ♡</p>
+      <div class="ribbon">🎀 HELLO KITTY GOMOKU 🎀</div>
+      <h1>냥냥 오목</h1>
+      <p>귀여운 고양이들과 함께하는 오목 한 판!</p>
     </header>
 
-    <section class="game-layout">
-      <div class="board-card">
-        <div class="board-top">
-          <span>🎀 KITTY BOARD 🎀</span>
-          <span id="turnLabel">내 차례예요!</span>
-        </div>
-        <div class="canvas-wrap">
-          <canvas id="board" width="600" height="600"></canvas>
-        </div>
-        <p class="board-hint">고양이 돌을 놓아 다섯 개를 연결해 보세요 ♡</p>
+    <section class="settings panel">
+      <div class="setting">
+        <label for="gameMode">게임 모드</label>
+        <select id="gameMode">
+          <option value="ai">🤖 AI와 대결</option>
+          <option value="local">👭 커스텀 매치 (2인용)</option>
+        </select>
       </div>
 
-      <aside class="side-panel">
-        <div class="panel-card">
-          <h2>🐱 게임 설정</h2>
-          <label for="difficulty">컴퓨터 난이도</label>
-          <select id="difficulty">
-            <option value="easy">🌸 쉬움</option>
-            <option value="normal" selected>🎀 보통</option>
-            <option value="hard">💗 어려움</option>
-          </select>
-          <button id="newGameBtn" class="pink-btn">새 게임 시작</button>
-          <button id="undoBtn" class="light-btn">↩ 무르기</button>
-        </div>
+      <div class="setting" id="difficultySetting">
+        <label for="difficulty">AI 난이도</label>
+        <select id="difficulty">
+          <option value="easy">🌸 쉬움</option>
+          <option value="normal" selected>🎀 보통</option>
+          <option value="hard">💗 어려움</option>
+        </select>
+      </div>
 
-        <div class="panel-card">
-          <h2>💌 게임 기록</h2>
-          <div class="stats">
-            <div><span>승리</span><strong id="wins">0</strong></div>
-            <div><span>패배</span><strong id="losses">0</strong></div>
-            <div><span>승률</span><strong id="winRate">0%</strong></div>
-            <div><span>연승</span><strong id="streak">0</strong></div>
+      <div class="setting">
+        <label for="player1Name">플레이어 1 이름 (흑돌)</label>
+        <input id="player1Name" type="text" maxlength="12" value="플레이어 1">
+      </div>
+
+      <div class="setting" id="player2Setting">
+        <label for="player2Name">플레이어 2 이름 (백돌)</label>
+        <input id="player2Name" type="text" maxlength="12" value="플레이어 2">
+      </div>
+    </section>
+
+    <section class="game-layout">
+      <div class="game-area panel">
+        <div class="game-top">
+          <div>
+            <span class="small-label">현재 차례</span>
+            <strong id="turnLabel">흑돌 차례</strong>
           </div>
-          <button id="resetStatsBtn" class="reset-btn">기록 초기화</button>
+          <div class="turn-badge" id="turnBadge">🐱 흑돌</div>
         </div>
 
-        <div class="panel-card character-card">
-          <div class="kitty-icon">🎀</div>
-          <strong>오늘의 오목 친구</strong>
-          <p id="message">준비됐나요? 첫 수를 놓아보세요!</p>
+        <div class="board-wrap">
+          <canvas id="board" width="600" height="600"
+            aria-label="15줄 오목 게임판"></canvas>
         </div>
 
-        <div class="rule-card">
-          <strong>📌 금수 규칙</strong>
-          <p>흑돌은 33·44·장목이 금지됩니다.</p>
-          <p>흑돌은 정확히 5개를 연결해야 승리합니다.</p>
+        <p id="message" class="message">흑돌부터 시작해 보세요! 💗</p>
+
+        <div class="game-buttons">
+          <button id="newGameBtn" class="primary">🎀 새 게임</button>
+          <button id="undoBtn" class="secondary">↩ 무르기</button>
         </div>
+      </div>
+
+      <aside class="side-area">
+        <section class="panel stats">
+          <h2>🏆 AI 대결 기록</h2>
+          <div class="stat-grid">
+            <div class="stat-card">
+              <span>승리</span>
+              <strong id="wins">0</strong>
+            </div>
+            <div class="stat-card">
+              <span>패배</span>
+              <strong id="losses">0</strong>
+            </div>
+            <div class="stat-card">
+              <span>승률</span>
+              <strong id="winRate">0%</strong>
+            </div>
+            <div class="stat-card">
+              <span>연승</span>
+              <strong id="streak">0</strong>
+            </div>
+          </div>
+          <button id="resetStatsBtn" class="text-button">기록 초기화</button>
+        </section>
+
+        <section class="panel stats">
+          <h2>👭 커스텀 매치 기록</h2>
+          <div class="local-record">
+            <span id="localPlayer1Label">플레이어 1</span>
+            <strong id="localWins1">0승</strong>
+          </div>
+          <div class="local-record">
+            <span id="localPlayer2Label">플레이어 2</span>
+            <strong id="localWins2">0승</strong>
+          </div>
+          <button id="resetLocalBtn" class="text-button">2인용 기록 초기화</button>
+        </section>
+
+        <section class="panel guide">
+          <h2>🎀 게임 안내</h2>
+          <p>검은 고양이가 먼저 시작해요.</p>
+          <p>가로, 세로, 대각선으로 다섯 개를 연결하면 승리!</p>
+          <p>AI 대결에서는 흑돌의 33·44·장목 금수를 적용합니다.</p>
+          <p>커스텀 매치는 두 사람이 번갈아 돌을 놓습니다.</p>
+        </section>
       </aside>
     </section>
 
-    <footer>MADE WITH LOVE ♡ HELLO KITTY GOMOKU</footer>
+    <footer>Made with 💗 춘천신협 오목 게임</footer>
   </main>
+
+  <div id="endModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-decoration">🎀 🐱 🎀</div>
+      <div id="endResult" class="end-result">승리!</div>
+      <div class="love-message">
+        <p>사랑해요</p>
+        <h2>춘천신협</h2>
+        <p>나의 사랑 💗</p>
+      </div>
+      <p class="end-subtitle">오늘도 즐거운 오목 한 판!</p>
+      <button id="modalNewGameBtn" class="primary">한 판 더 하기 🎀</button>
+    </div>
+  </div>
+
   <script src="game.js"></script>
 </body>
 </html>
