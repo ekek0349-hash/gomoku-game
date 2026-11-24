@@ -2,387 +2,74 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>동해의 오목</title>
-
-<style>
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  min-height: 100vh;
-  font-family: Arial, sans-serif;
-  background: #f4efe5;
-  color: #35291e;
-  display: flex;
-  justify-content: center;
-  padding: 35px 15px;
-}
-
-.container {
-  width: 100%;
-  max-width: 650px;
-  text-align: center;
-}
-
-h1 {
-  font-size: 34px;
-  margin-bottom: 8px;
-  letter-spacing: 3px;
-}
-
-.subtitle {
-  color: #897968;
-  margin-bottom: 25px;
-}
-
-.panel {
-  background: white;
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: 0 8px 30px #60472b15;
-}
-
-.status {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 18px;
-  gap: 10px;
-}
-
-.player {
-  flex: 1;
-  padding: 13px 5px;
-  border-radius: 12px;
-  background: #f5f1eb;
-  font-weight: bold;
-}
-
-.player.active {
-  background: #e8d6b9;
-  outline: 2px solid #a77b46;
-}
-
-.board-wrap {
-  width: 100%;
-  overflow: hidden;
-  background: #d9a968;
-  border-radius: 8px;
-  padding: 10px;
-  box-shadow: inset 0 0 12px #75451e55;
-}
-
-#board {
-  display: grid;
-  grid-template-columns: repeat(15, 1fr);
-  width: 100%;
-  aspect-ratio: 1;
-  background: #d9a968;
-}
-
-.cell {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  cursor: pointer;
-  min-width: 0;
-}
-
-.cell::before {
-  content: "";
-  position: absolute;
-  width: 100%;
-  height: 1px;
-  background: #77532d;
-}
-
-.cell::after {
-  content: "";
-  position: absolute;
-  width: 1px;
-  height: 100%;
-  background: #77532d;
-}
-
-.stone {
-  position: relative;
-  z-index: 2;
-  width: 78%;
-  height: 78%;
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-.black {
-  background: radial-gradient(circle at 30% 25%, #666, #111 65%);
-  box-shadow: 1px 3px 4px #0006;
-}
-
-.white {
-  background: radial-gradient(circle at 30% 25%, white, #ddd 75%);
-  box-shadow: 1px 3px 4px #0005;
-}
-
-.controls {
-  display: flex;
-  gap: 10px;
-  margin-top: 20px;
-}
-
-button {
-  flex: 1;
-  padding: 13px;
-  border: none;
-  border-radius: 10px;
-  background: #59432e;
-  color: white;
-  font-size: 15px;
-  font-weight: bold;
-  cursor: pointer;
-}
-
-button:hover {
-  background: #80603d;
-}
-
-button:disabled {
-  background: #c9c1b7;
-  cursor: not-allowed;
-}
-
-.message {
-  margin-top: 18px;
-  font-weight: bold;
-  min-height: 24px;
-  color: #79552d;
-}
-
-.footer {
-  margin-top: 22px;
-  color: #a39789;
-  font-size: 12px;
-}
-
-@media (max-width: 450px) {
-  body {
-    padding: 20px 8px;
-  }
-
-  h1 {
-    font-size: 27px;
-  }
-
-  .panel {
-    padding: 12px;
-  }
-
-  .board-wrap {
-    padding: 6px;
-  }
-}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hello Kitty Gomoku</title>
+  <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
-<div class="container">
+  <main class="page">
+    <header class="hero">
+      <div class="eyebrow">♡ CUTE GOMOKU CLUB ♡</div>
+      <h1>Hello Kitty Gomoku</h1>
+      <p>귀여운 고양이 친구들과 오목 한 판! 🎀</p>
+    </header>
 
-  <h1>⚫ 동해의 오목 ⚪</h1>
-  <div class="subtitle">두 사람의 두뇌 싸움, 지금 시작합니다.</div>
+    <section class="game-layout">
+      <aside class="side-panel">
+        <div class="panel-card">
+          <h2>🎀 게임 설정</h2>
+          <label for="difficulty">AI 난이도</label>
+          <select id="difficulty">
+            <option value="easy">초보냥이</option>
+            <option value="normal" selected>보통냥이</option>
+            <option value="hard">고수냥이</option>
+          </select>
+          <div class="player-card human">
+            <span class="player-icon">🐱</span>
+            <div>
+              <strong>나</strong>
+              <small>리본 고양이</small>
+            </div>
+            <span class="turn-dot" id="humanDot"></span>
+          </div>
+          <div class="player-card computer">
+            <span class="player-icon">🐾</span>
+            <div>
+              <strong>AI</strong>
+              <small>핑크 고양이</small>
+            </div>
+            <span class="turn-dot" id="aiDot"></span>
+          </div>
+          <p id="message" class="message" aria-live="polite">내 차례야! 원하는 곳에 돌을 놓아봐 💗</p>
+          <button id="restartBtn" class="primary-btn">새 게임 시작</button>
+          <button id="undoBtn" class="secondary-btn">한 수 무르기</button>
+        </div>
 
-  <div class="panel">
+        <div class="panel-card record-card">
+          <h2>🌸 나의 전적</h2>
+          <div class="record-row"><span>승리</span><strong id="wins">0</strong></div>
+          <div class="record-row"><span>패배</span><strong id="losses">0</strong></div>
+          <div class="record-row"><span>승률</span><strong id="winRate">0%</strong></div>
+          <div class="record-row"><span>연승</span><strong id="streak">0</strong></div>
+          <button id="resetStatsBtn" class="text-btn">전적 초기화</button>
+        </div>
+      </aside>
 
-    <div class="status">
-      <div class="player active" id="blackPlayer">
-        ⚫ 흑돌
-        <div>플레이어 1</div>
-      </div>
+      <section class="board-card">
+        <div class="board-heading">
+          <span>🎀 Kitty's Pink Board 🎀</span>
+          <span class="board-subtitle">가로 · 세로 · 대각선 다섯 개!</span>
+        </div>
+        <div class="board-frame">
+          <canvas id="board" width="750" height="750" aria-label="15줄 오목 게임판"></canvas>
+        </div>
+        <p class="board-note">검은 돌은 33·44·장목 금수 규칙이 적용돼요.</p>
+      </section>
+    </section>
 
-      <div class="player" id="whitePlayer">
-        ⚪ 백돌
-        <div>플레이어 2</div>
-      </div>
-    </div>
-
-    <div class="board-wrap">
-      <div id="board"></div>
-    </div>
-
-    <div class="message" id="message">
-      흑돌부터 시작하세요!
-    </div>
-
-    <div class="controls">
-      <button onclick="undoMove()" id="undoBtn" disabled>
-        ↩ 무르기
-      </button>
-
-      <button onclick="resetGame()">
-        ↻ 새 게임
-      </button>
-    </div>
-
-  </div>
-
-  <div class="footer">
-    GOMOKU GAME · 15 × 15 BOARD
-  </div>
-
-</div>
-
-<script>
-const SIZE = 15;
-
-let board = [];
-let currentPlayer = 1;
-let history = [];
-let gameOver = false;
-
-const boardElement = document.getElementById("board");
-const message = document.getElementById("message");
-
-function resetGame() {
-  board = Array.from(
-    { length: SIZE },
-    () => Array(SIZE).fill(0)
-  );
-
-  currentPlayer = 1;
-  history = [];
-  gameOver = false;
-
-  message.textContent = "흑돌부터 시작하세요!";
-  renderBoard();
-  updateStatus();
-}
-
-function renderBoard() {
-  boardElement.innerHTML = "";
-
-  for (let r = 0; r < SIZE; r++) {
-    for (let c = 0; c < SIZE; c++) {
-      const cell = document.createElement("div");
-      cell.className = "cell";
-
-      if (board[r][c] !== 0) {
-        const stone = document.createElement("div");
-        stone.className =
-          "stone " + (board[r][c] === 1 ? "black" : "white");
-
-        cell.appendChild(stone);
-      }
-
-      cell.addEventListener("click", () => {
-        placeStone(r, c);
-      });
-
-      boardElement.appendChild(cell);
-    }
-  }
-
-  document.getElementById("undoBtn").disabled =
-    history.length === 0;
-}
-
-function placeStone(r, c) {
-  if (gameOver || board[r][c] !== 0) return;
-
-  board[r][c] = currentPlayer;
-  history.push({ r, c, player: currentPlayer });
-
-  renderBoard();
-
-  if (checkWin(r, c)) {
-    gameOver = true;
-    message.textContent =
-      (currentPlayer === 1 ? "⚫ 흑돌" : "⚪ 백돌") +
-      " 승리! 축하합니다! 🎉";
-    updateStatus();
-    return;
-  }
-
-  if (history.length === SIZE * SIZE) {
-    gameOver = true;
-    message.textContent = "무승부입니다!";
-    updateStatus();
-    return;
-  }
-
-  currentPlayer = currentPlayer === 1 ? 2 : 1;
-
-  message.textContent =
-    currentPlayer === 1
-      ? "흑돌 차례입니다."
-      : "백돌 차례입니다.";
-
-  updateStatus();
-}
-
-function checkWin(r, c) {
-  const directions = [
-    [0, 1],
-    [1, 0],
-    [1, 1],
-    [1, -1]
-  ];
-
-  for (const [dr, dc] of directions) {
-    let count = 1;
-
-    for (const sign of [1, -1]) {
-      let nr = r + dr * sign;
-      let nc = c + dc * sign;
-
-      while (
-        nr >= 0 && nr < SIZE &&
-        nc >= 0 && nc < SIZE &&
-        board[nr][nc] === currentPlayer
-      ) {
-        count++;
-        nr += dr * sign;
-        nc += dc * sign;
-      }
-    }
-
-    if (count >= 5) return true;
-  }
-
-  return false;
-}
-
-function undoMove() {
-  if (history.length === 0 || gameOver) return;
-
-  const last = history.pop();
-
-  board[last.r][last.c] = 0;
-  currentPlayer = last.player;
-
-  message.textContent =
-    currentPlayer === 1
-      ? "흑돌 차례입니다."
-      : "백돌 차례입니다.";
-
-  renderBoard();
-  updateStatus();
-}
-
-function updateStatus() {
-  document.getElementById("blackPlayer")
-    .classList.toggle("active", currentPlayer === 1);
-
-  document.getElementById("whitePlayer")
-    .classList.toggle("active", currentPlayer === 2);
-}
-
-resetGame();
-</script>
-
+    <footer>Made with ♡ and lots of pink ribbons</footer>
+  </main>
+  <script src="game.js"></script>
 </body>
 </html>
-
-
